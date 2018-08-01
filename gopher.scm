@@ -2,10 +2,10 @@
 (use-modules (ice-9 rdelim))
 (load "pstk.scm")
 (tk-start)
-(tk/image 'create 'photo "img-back" 'file: "arrow_left.png")
-(tk/image 'create 'photo "img-forward" 'file: "arrow_right.png")
-(tk/image 'create 'photo "img-directory" 'file: "folder.png")
-(tk/image 'create 'photo "img-text" 'file: "page.png")
+(tk/image 'create 'photo "img-back" 'file: "assets/arrow_left.png")
+(tk/image 'create 'photo "img-forward" 'file: "assets/arrow_right.png")
+(tk/image 'create 'photo "img-directory" 'file: "assets/folder.png")
+(tk/image 'create 'photo "img-text" 'file: "assets/page.png")
 (define tool-bar
   (tk 'create-widget 'frame 'bd: 1 'relief: 'raised))
 (define btn-back
