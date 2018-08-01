@@ -1,5 +1,6 @@
-#!/usr/bin/env guile
+#!/bin/sh
 ;; Guile + PS/Tk Gopher client !#
+
 (use-modules (ice-9 rdelim))
 (load "pstk.scm")
 
@@ -12,6 +13,8 @@
   (let [(ip (get-ip-of address))]
     (inet-ntop AF_INET ip)))
 
+;; TODO: this should take an arbitrary font
+;; TODO: the font should be defined elsewhere
 (define (ch-width)
   (let [(f (tk-eval "font create f -family \"Ubuntu Mono\" -size 10"))
         (w (string->number (tk-eval "font measure f 0")))]
@@ -19,6 +22,7 @@
     w))
 
 (define (gopher-get address selector port)
+  "Returns a list of lines containing the server's response to a Gopher request at ADDRESS:PORT for SELECTOR."
   (let [(s (socket PF_INET SOCK_STREAM 0))]
     (connect s AF_INET (get-ip-of address) port)
     (display (format #f "~a\r\n" selector) s) ; Ask for the selector
@@ -59,10 +63,15 @@
   (tk/focus main-text))
 
 (tk-start)
+;; Initial window settings
+(tk/wm 'title tk "Guipher")
+(tk/wm 'geometry tk "640x480")
+;; Load the various icons we use
 (tk/image 'create 'photo "img-back" 'file: "assets/arrow_left.png")
 (tk/image 'create 'photo "img-forward" 'file: "assets/arrow_right.png")
 (tk/image 'create 'photo "img-directory" 'file: "assets/folder.png")
 (tk/image 'create 'photo "img-text" 'file: "assets/page.png")
+;; Define the tool bar
 (define tool-bar
   (tk 'create-widget 'frame 'bd: 1 'relief: 'raised))
 (define btn-back
@@ -75,15 +84,15 @@
 (tk/pack btn-back btn-forward 'side: 'left 'in: tool-bar)
 (tk/pack address-bar 'side: 'left 'expand: 1 'fill: 'x 'in: tool-bar)
 (tk/pack tool-bar 'fill: 'x)
+;; Define the main widget
 (define main-text
   (tk 'create-widget 'text 'border: 0 'relief: 'flat 'wrap: 'word
       'state: 'disabled 'font: '("Ubuntu Mono" 10)))
 (main-text 'tag 'config "default" 'lmargin1: (ch-width))
 (main-text 'tag 'config "no-icon" 'lmargin1: (+ 16 (ch-width)))
 (tk/pack main-text 'fill: 'both 'expand: 1)
-
+;; Load the home page/address given on the command line
+;; TODO: actually do it
 (gopher-render main-text (gopher-get "localhost" "/" 70))
-
-(tk/wm 'title tk "Guipher")
-(tk/wm 'geometry tk "640x480")
+;; Start Tk
 (tk-event-loop)
