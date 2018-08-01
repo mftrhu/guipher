@@ -1,6 +1,6 @@
 #!/usr/bin/env guile
 ;; Guile + PS/Tk Gopher client !#
-(use-modules (ice-9 rdelim) (pstk.scm))
+(use-modules (ice-9 rdelim))
 (load "pstk.scm")
 
 (define (get-ip-of address)
@@ -12,9 +12,15 @@
   (let [(ip (get-ip-of address))]
     (inet-ntop AF_INET ip)))
 
-(define (gopher-goto)
-  (display (address-bar 'get))
-  (tk/focus main-text))
+(define (gopher-get address selector port)
+  (let [(s (socket PF_INET SOCK_STREAM 0))]
+    (connect s AF_INET (get-ip-of address) port)
+    (display (format #f "~a\r\n" selector) s) ; Ask for the selector
+    (let loop [(lines '())]
+      (let [(line (read-line s))]
+        (if (not (eof-object? line))
+            (loop (append lines (list line)))
+            lines)))))
 
 (define (gopher-to-tk-text line where)
   (let* [(kind (substring line 0 1))
@@ -33,6 +39,19 @@
     (where 'insert 'end
            (string-concatenate (list (list-ref pieces 0) "\n"))
            tags)))
+
+(define (gopher-render widget lines)
+  (widget 'config 'state: 'normal)
+  (display lines)
+  (for-each
+   (lambda (line)
+     (gopher-to-tk-text line widget))
+   lines)
+  (widget 'config 'state: 'disabled))
+
+(define (gopher-goto)
+  (display (address-bar 'get))
+  (tk/focus main-text))
 
 (tk-start)
 (tk/image 'create 'photo "img-back" 'file: "assets/arrow_left.png")
@@ -63,6 +82,7 @@
 (main-text 'tag 'config "no-icon" 'lmargin1: (+ 16 (ch-width)))
 (tk/pack main-text 'fill: 'both 'expand: 1)
 
+(when #f
 (let [(s (socket PF_INET SOCK_STREAM 0))
       (address "localhost")
       (port 70)
@@ -74,6 +94,9 @@
       [(or (eof-object? line) (equal? line "."))]
     (gopher-to-tk-text line main-text))
   (main-text 'config 'state: 'disabled))
+)
+
+(gopher-render main-text (gopher-get "localhost" "/" 70))
 
 (tk/wm 'title tk "Guipher")
 (tk/wm 'geometry tk "640x480")
