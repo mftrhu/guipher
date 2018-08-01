@@ -12,6 +12,12 @@
   (let [(ip (get-ip-of address))]
     (inet-ntop AF_INET ip)))
 
+(define (ch-width)
+  (let [(f (tk-eval "font create f -family \"Ubuntu Mono\" -size 10"))
+        (w (string->number (tk-eval "font measure f 0")))]
+    (tk-eval "font delete f")
+    w))
+
 (define (gopher-get address selector port)
   (let [(s (socket PF_INET SOCK_STREAM 0))]
     (connect s AF_INET (get-ip-of address) port)
@@ -22,30 +28,29 @@
             (loop (append lines (list line)))
             lines)))))
 
-(define (gopher-to-tk-text line where)
+(define (gopher-render-line widget line)
   (let* [(kind (substring line 0 1))
          (line (substring line 1))
          (pieces (string-split line #\tab))
          (tags '("default"))]
     (cond
      [(equal? kind "1")
-      (where 'image 'create 'end 'image: "img-directory")
-      (where 'insert 'end " ")]
+      (widget 'image 'create 'end 'image: "img-directory")
+      (widget 'insert 'end " ")]
      [(equal? kind "0")
-      (where 'image 'create 'end 'image: "img-text")
-      (where 'insert 'end " ")]
+      (widget 'image 'create 'end 'image: "img-text")
+      (widget 'insert 'end " ")]
      [else
       (set! tags '("no-icon"))])
-    (where 'insert 'end
+    (widget 'insert 'end
            (string-concatenate (list (list-ref pieces 0) "\n"))
            tags)))
 
 (define (gopher-render widget lines)
   (widget 'config 'state: 'normal)
-  (display lines)
   (for-each
    (lambda (line)
-     (gopher-to-tk-text line widget))
+     (gopher-render-line widget line))
    lines)
   (widget 'config 'state: 'disabled))
 
@@ -73,28 +78,9 @@
 (define main-text
   (tk 'create-widget 'text 'border: 0 'relief: 'flat 'wrap: 'word
       'state: 'disabled 'font: '("Ubuntu Mono" 10)))
-(define (ch-width)
-  (let [(f (tk-eval "font create f -family \"Ubuntu Mono\" -size 10"))
-        (w (string->number (tk-eval "font measure f 0")))]
-    (tk-eval "font delete f")
-    w))
 (main-text 'tag 'config "default" 'lmargin1: (ch-width))
 (main-text 'tag 'config "no-icon" 'lmargin1: (+ 16 (ch-width)))
 (tk/pack main-text 'fill: 'both 'expand: 1)
-
-(when #f
-(let [(s (socket PF_INET SOCK_STREAM 0))
-      (address "localhost")
-      (port 70)
-      (selector "/")]
-  (connect s AF_INET (get-ip-of address) port)
-  (display (format #f "~a\r\n" selector) s)       ; Send the wanted selector
-  (main-text 'config 'state: 'normal)
-  (do [(line (read-line s) (read-line s))]        ; Read and display the response
-      [(or (eof-object? line) (equal? line "."))]
-    (gopher-to-tk-text line main-text))
-  (main-text 'config 'state: 'disabled))
-)
 
 (gopher-render main-text (gopher-get "localhost" "/" 70))
 
