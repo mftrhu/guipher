@@ -22,13 +22,10 @@
 (main-text 'tag 'config "no-icon" 'lmargin1: 16)
 (tk/pack main-text 'fill: 'both 'expand: 1)
 
-;; (define s (socket PF_INET SOCK_STREAM 0))
-;; (connect s AF_INET (inet-pton AF_INET "localhost") 70)
-
-;; (display (vector-ref (addrinfo:addr (car (getaddrinfo "localhost" "gopher"))) 1))
 (define (get-ip-of address)
   "Returns the IP of ADDRESS in a form that can be used by (connect ... AF_INET)."
   (car (hostent:addr-list (gethost address))))
+
 (define (get-ipv4-of address)
   "Returns the IPv4 of ADDRESS in string form (e.g.: 127.0.0.1)."
   (let [(ip (get-ip-of address))]
@@ -50,16 +47,6 @@
            (string-concatenate (list (list-ref pieces 0) "\n"))
            tags)))
 
-;; (define s (socket PF_INET SOCK_STREAM 0))
-;; (define n (car (hostent:addr-list (gethost "localhost"))))
-(when #f
-      (connect s AF_INET (get-ip-of "localhost") 70)
-      (display "/\n" s)
-      (do [(line (read-line s) (read-line s))]
-          [(eof-object? line)]
-        (display line)
-        (newline))
-      )
 (let [(s (socket PF_INET SOCK_STREAM 0))
       (address "localhost")
       (port 70)
@@ -69,17 +56,8 @@
   (main-text 'config 'state: 'normal)
   (do [(line (read-line s) (read-line s))]        ; Read and display the response
       [(or (eof-object? line) (equal? line "."))]
-    ;; (display (format #f "~a\n" line))
-    (gopher-to-tk-text line main-text)
-    ;; (main-text 'insert 'end (format #f "~a\n" line))
-    )
+    (gopher-to-tk-text line main-text))
   (main-text 'config 'state: 'disabled))
 (tk/wm 'title tk "Guipher")
 (tk/wm 'geometry tk "640x480")
 (tk-event-loop)
-
-; (display (format #f "The IP is: ~a\n" (get-ipv4-of "localhost")))
-
-;;(let ([s (socket PF_INET SOCK_STREAM 0)]
-;;      [d (vector-ref (addrinfo:addr (car (getaddrinfo "localhost" "gopher"))) 1)])
-;;  (connect s AF_INET d 70))
