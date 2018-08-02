@@ -21,6 +21,9 @@
     (tk-eval "font delete f")
     w))
 
+(define (tk-get-list name)
+  (string-split (tk-get-var name) #\space))
+
 (define (gopher-get address selector port)
   "Returns a list of lines containing the server's response to a Gopher request at ADDRESS:PORT for SELECTOR."
   (let [(s (socket PF_INET SOCK_STREAM 0))]
@@ -48,7 +51,7 @@
          (description (list-ref pieces 0))
          (selector (list-ref pieces 1))
          (host (list-ref pieces 2))
-         (port (list-ref pieces 3))
+         (port (string->number (list-ref pieces 3)))
          (line-tags '("default"))]
     (cond
      [(equal? kind "1")
@@ -61,7 +64,7 @@
       (set! line-tags '("no-icon"))])
     (if (> (string-length selector) 0)
         (let [(tag (format #f "LINK:~a:~a:~a" host port selector))]
-          (hashq-set! links tag '(host selector port))
+          (hash-set! links tag (list host selector port))
           (set! line-tags (append line-tags (list tag)))))
     (widget 'insert 'end
            (string-concatenate (list " " (list-ref pieces 0) "\n"))
@@ -115,34 +118,17 @@
 (main-text 'tag 'bind "link" "<Leave>"
            (lambda () (main-text 'config 'cursor: "")))
 
-(tk-var 'tags)
-
-(define (tk-get-list name)
-  (string-split (tk-get-var name) #\space))
-
 (define (get-link widget x y)
   (tk-eval (format #f "set ::scmVar(tags) \"[~a tag names @~a,~a]\"" widget x y))
   ;; Apparently the following line is required - otherwise `tk-get-var`,
   ;; `tk-get-list` and the like don't work inside of `let` or `find`
   (tk-get-var 'tags)
-  ;;(let [(tags (string-split (tk-get-var 'tags) #\space))]
-  (display
-   (find (lambda (i) (display i)(newline) (string-prefix? "LINK:" i))
-         (tk-get-list 'tags))
-   )(newline)
-  (when #f
-        (let [(tags (tk-get-list 'tags))]
-          (display "What the hell is wrong with you?\n")
-          (write tags)(newline)
-          (write (string-split (tk-get-var 'tags) #\space))(newline)
-          (write (tk-get-list 'tags))(newline)
-          (display (tk-get-var 'tags))(newline)
-          ;; Find a LINK: tag
-          (display
-           (find (lambda (i) (string-prefix? "LINK:" i))
-                 (tk-get-list 'tags))
-           )(newline)
-            ))
+  ;;(write links)
+  (gopher-render main-text (apply gopher-get
+   (hash-ref links
+              (find (lambda (i) (string-prefix? "LINK:" i))
+                    (tk-get-list 'tags)))
+   ))
   )
 (main-text 'tag 'bind "link" "<1>"
            `(,(lambda (widget x y)
