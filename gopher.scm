@@ -37,20 +37,23 @@
 
 ;; Hash table matching Tk tags to host:selector:port triplets
 (define links (make-hash-table))
+;; Stacks for the history
 (define hist-back '())
 (define hist-forw '())
 
 (define (gopher-history-back)
-  (let [(current (car hist-back))
-        (previous (car (cdr hist-back)))]
-    (set! hist-back (cdr (cdr hist-back)))
-    (set! hist-forw (cons current hist-forw))
-    (gopher-goto previous)))
+  (if (>= (length hist-back) 2)
+      (let [(current (car hist-back))
+            (previous (car (cdr hist-back)))]
+        (set! hist-back (cdr (cdr hist-back)))
+        (set! hist-forw (cons current hist-forw))
+        (gopher-goto previous))))
 
 (define (gopher-history-forward)
-  (let [(next (car hist-forw))]
-    (set! hist-forw (cdr hist-forw))
-    (gopher-goto next)))
+  (if (>= (length hist-forw) 1)
+      (let [(next (car hist-forw))]
+        (set! hist-forw (cdr hist-forw))
+        (gopher-goto next))))
 
 (define (gopher-render-line widget line)
   (let* [(kind (substring line 0 1))
@@ -138,6 +141,7 @@
 (define address-bar
   (tk 'create-widget 'ttk::combobox))
 (tk/bind address-bar "<Return>" gopher-jump-to-address)
+;;; Pack
 (tk/pack btn-back btn-forward 'side: 'left 'in: tool-bar)
 (tk/pack address-bar 'side: 'left 'expand: 1 'fill: 'x 'in: tool-bar)
 (tk/pack tool-bar 'fill: 'x)
@@ -145,6 +149,7 @@
 (define main-text
   (tk 'create-widget 'text 'border: 0 'relief: 'flat 'wrap: 'word
       'state: 'disabled 'font: '("Ubuntu Mono" 11)))
+;;; Pack
 (tk/pack main-text 'fill: 'both 'expand: 1)
 ;; Define the main tags
 (main-text 'tag 'config "default" 'lmargin1: 0); (+ 1 (ch-width)))
@@ -188,7 +193,10 @@
            `(,(lambda (widget x y)
                 (display (format #f "Clicked ~a, ~a\n" x y))
                 (let [(link (gopher-link-at-point widget x y))]
-                  (if link (gopher-goto link))))
+                  (if link (begin
+                               ;; Clear the forward history stack
+                               (set! hist-forw '())
+                               (gopher-goto link)))))
              ,main-text %x %y))
 ;; Load the home page/address given on the command line
 ;; TODO: actually do it
