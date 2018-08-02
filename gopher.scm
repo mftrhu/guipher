@@ -142,6 +142,7 @@
 ;; Load the various icons we use
 (tk/image 'create 'photo "img-back" 'file: "assets/arrow_left.png")
 (tk/image 'create 'photo "img-forward" 'file: "assets/arrow_right.png")
+(tk/image 'create 'photo "img-refresh" 'file: "assets/arrow_refresh.png")
 (tk/image 'create 'photo "img-directory" 'file: "assets/folder.png")
 (tk/image 'create 'photo "img-text" 'file: "assets/page.png")
 ;; Define the tool bar
@@ -150,6 +151,12 @@
 (define btn-back
   (tk 'create-widget 'button 'image: "img-back" 'relief: "flat"
       'command: gopher-history-back))
+(define btn-refresh
+  (tk 'create-widget 'button 'image: "img-refresh" 'relief: "flat"
+      'command: (lambda ()
+                  (let [(current (car hist-back))]
+                    (set! hist-back (cdr hist-back))
+                    (gopher-goto current)))))
 (define btn-forward
   (tk 'create-widget 'button 'image: "img-forward" 'relief: "flat"
       'command: gopher-history-forward))
@@ -157,7 +164,7 @@
   (tk 'create-widget 'ttk::combobox))
 (tk/bind address-bar "<Return>" gopher-jump-to-address)
 ;;; Pack
-(tk/pack btn-back btn-forward 'side: 'left 'in: tool-bar)
+(tk/pack btn-back btn-refresh btn-forward 'side: 'left 'in: tool-bar)
 (tk/pack address-bar 'side: 'left 'expand: 1 'fill: 'x 'in: tool-bar)
 (tk/pack tool-bar 'fill: 'x)
 ;; Define the main widget
