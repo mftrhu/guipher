@@ -58,13 +58,13 @@
       (set! line-tags '("no-icon"))])
     (if (> (string-length selector) 0)
         (let [(tag (format #f "LINK:~a:~a:~a" host port selector))]
-          (hash-set! links tag (list host selector port))
+          (hash-set! links tag (list kind host selector port))
           (set! line-tags (append line-tags (list tag)))))
     (widget 'insert 'end
            (string-concatenate (list " " (list-ref pieces 0) "\n"))
            line-tags)))
 
-(define (gopher-render widget lines)
+(define (gopher-render-directory widget lines)
   (widget 'config 'state: 'normal)
   (widget 'delete '1.0 'end)
   (for-each
@@ -73,7 +73,16 @@
    lines)
   (widget 'config 'state: 'disabled))
 
-(define (gopher-goto)
+(define (gopher-render-text widget lines)
+  (widget 'config 'state: 'normal)
+  (widget 'delete '1.0 'end)
+  (for-each
+   (lambda (line)
+     (widget 'insert 'end (string-concatenate (list line "\n"))))
+   lines)
+  (widget 'config 'state: 'disabled))
+
+(define (gopher-jump-to-address)
   (display (address-bar 'get))
   (tk/focus main-text))
 
@@ -95,7 +104,7 @@
   (tk 'create-widget 'button 'image: "img-forward" 'relief: "flat"))
 (define address-bar
   (tk 'create-widget 'ttk::combobox))
-(tk/bind address-bar "<Return>" gopher-goto)
+(tk/bind address-bar "<Return>" gopher-jump-to-address)
 (tk/pack btn-back btn-forward 'side: 'left 'in: tool-bar)
 (tk/pack address-bar 'side: 'left 'expand: 1 'fill: 'x 'in: tool-bar)
 (tk/pack tool-bar 'fill: 'x)
@@ -114,7 +123,7 @@
            (lambda () (main-text 'config 'cursor: "")))
 
 (define (gopher-link-at-point widget x y)
-  "Given a Tk text WIDGET and a pair of X, Y coordinates, returns a triplet of host, selector and port if a link exists at that point, or `#f` if it doesn't."
+  "Given a Tk text WIDGET and a pair of X, Y coordinates, returns a quadruplet of kind, host, selector and port if a link exists at that point, or `#f` if it doesn't."
   (tk-eval (format #f "set ::scmVar(tags) \"[~a tag names @~a,~a]\"" widget x y))
   ;; HACK: Apparently the following line is required - otherwise `tk-get-var`,
   ;;   `tk-get-list` and the like don't work inside of `let` or `find`
@@ -123,17 +132,26 @@
             (find (lambda (i) (string-prefix? "LINK:" i))
                   (tk-get-list 'tags))))
   
-(define (gopher-follow-link triplet)
-  (gopher-render main-text (apply gopher-get triplet)))
+(define (gopher-goto quadruplet)
+  (let [(kind (car quadruplet))
+        (triplet (cdr quadruplet))]
+    (cond
+     [(equal? kind "1")
+      (gopher-render-directory main-text (apply gopher-get triplet))]
+     [(equal? kind "0")
+      (gopher-render-text main-text (apply gopher-get triplet))]
+     [else
+      (display "Dunno lol\n")])))
 
 (main-text 'tag 'bind "link" "<1>"
            `(,(lambda (widget x y)
                 (display (format #f "Clicked ~a, ~a\n" x y))
                 (let [(link (gopher-link-at-point widget x y))]
-                  (if link (gopher-follow-link link))))
+                  (if link (gopher-goto link))))
              ,main-text %x %y))
 ;; Load the home page/address given on the command line
 ;; TODO: actually do it
-(gopher-render main-text (gopher-get "localhost" "/" 70))
+;;(gopher-render-directory main-text (gopher-get "localhost" "/" 70))
+(gopher-goto '("1" "localhost" "/" 70))
 ;; Start Tk
 (tk-event-loop)
