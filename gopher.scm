@@ -1,7 +1,7 @@
 #!/usr/bin/env guile
 ;; Guile + PS/Tk Gopher client !#
 
-(use-modules (ice-9 rdelim) (srfi srfi-1))
+(use-modules (ice-9 rdelim) (srfi srfi-1) (web uri))
 (load "pstk.scm")
 
 (define (get-ip-of address)
@@ -84,6 +84,23 @@
 
 (define (gopher-jump-to-address)
   (display (address-bar 'get))
+  ;; TODO: this should actually check for the presence of a protocol, use
+  ;;   `gopher://` if none is present, and show an error or dispatch to
+  ;;   `xdg-open` if anything else is found (http, ftp & co)
+  ;; TODO: this should also try to parse out the selector from the URL
+  ;;   instead of assuming that everything is a directory
+  (let* [(bar (address-bar 'get))
+         ;; `string->uri` requires the string to contain a protocol - check
+         ;;   if the address bar contents start with `gopher://` and prepend
+         ;;   it if needed
+         (uri (string->uri
+               (if (string-prefix? "gopher://" bar)
+                   bar
+                   (string-concatenate (list "gopher://" bar)))))
+         (host (uri-host uri))
+         (port (or (uri-port uri) 70))
+         (selector (uri-path uri))]
+    (gopher-goto (list "1" host selector port)))
   (tk/focus main-text))
 
 (tk-start)
@@ -137,7 +154,12 @@
         (triplet (cdr quadruplet))]
     (cond
      [(equal? kind "1")
-      (gopher-render-directory main-text (apply gopher-get triplet))]
+      (gopher-render-directory main-text (apply gopher-get triplet))
+      (address-bar 'set (format #f "gopher://~a:~a/~a~a"
+                                (list-ref triplet 0)
+                                (list-ref triplet 2)
+                                kind
+                                (list-ref triplet 1)))]
      [(equal? kind "0")
       (gopher-render-text main-text (apply gopher-get triplet))]
      [else
@@ -151,7 +173,6 @@
              ,main-text %x %y))
 ;; Load the home page/address given on the command line
 ;; TODO: actually do it
-;;(gopher-render-directory main-text (gopher-get "localhost" "/" 70))
 (gopher-goto '("1" "localhost" "/" 70))
 ;; Start Tk
 (tk-event-loop)
