@@ -35,14 +35,8 @@
             (loop (append lines (list line)))
             lines)))))
 
+;; Hash table matching Tk tags to host:selector:port triplets
 (define links (make-hash-table))
-
-(define (nth n l)
-  (if (or (> n (length l)) (< n 0))
-    (error "Index out of bounds.")
-    (if (eq? n 0)
-      (car l)
-      (nth (- n 1) (cdr l)))))
 
 (define (gopher-render-line widget line)
   (let* [(kind (substring line 0 1))
@@ -119,21 +113,25 @@
 (main-text 'tag 'bind "link" "<Leave>"
            (lambda () (main-text 'config 'cursor: "")))
 
-(define (get-link widget x y)
+(define (gopher-link-at-point widget x y)
+  "Given a Tk text WIDGET and a pair of X, Y coordinates, returns a triplet of host, selector and port if a link exists at that point, or `#f` if it doesn't."
   (tk-eval (format #f "set ::scmVar(tags) \"[~a tag names @~a,~a]\"" widget x y))
-  ;; Apparently the following line is required - otherwise `tk-get-var`,
-  ;; `tk-get-list` and the like don't work inside of `let` or `find`
+  ;; HACK: Apparently the following line is required - otherwise `tk-get-var`,
+  ;;   `tk-get-list` and the like don't work inside of `let` or `find`
   (tk-get-var 'tags)
-  (gopher-render main-text (apply gopher-get
-   (hash-ref links
-              (find (lambda (i) (string-prefix? "LINK:" i))
-                    (tk-get-list 'tags)))
-   ))
-  )
+  (hash-ref links
+            (find (lambda (i) (string-prefix? "LINK:" i))
+                  (tk-get-list 'tags))))
+  
+(define (gopher-follow-link triplet)
+  (gopher-render main-text (apply gopher-get triplet)))
+
 (main-text 'tag 'bind "link" "<1>"
            `(,(lambda (widget x y)
                 (display (format #f "Clicked ~a, ~a\n" x y))
-                (get-link widget x y)) ,main-text %x %y))
+                (let [(link (gopher-link-at-point widget x y))]
+                  (if link (gopher-follow-link link))))
+             ,main-text %x %y))
 ;; Load the home page/address given on the command line
 ;; TODO: actually do it
 (gopher-render main-text (gopher-get "localhost" "/" 70))
