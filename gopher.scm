@@ -98,18 +98,9 @@
 (main-text 'tag 'bind "link" "<Leave>"
            (lambda () (main-text 'config 'cursor: "")))
 (define (get-link widget x y)
-  ;;(display (format #f "Invoked get-link at ~a, ~a\n" x y))
-  ;; (write main-text)
-  ;;(format #t ".g6 tag names @~a,~a" x y)
-  ;;(display (tk-eval (format #f "exec notify-send \"Hey :: [~a tag names @~a,~a]\"" widget x y)))
-  ;;(display "\nThe previous was tk-eval'ed\n")
-  ;;(let [(a (main-text 'tag 'names (format #f "@~a,~a" x y)))]
-  ;;(let [(a (tk-eval (format #f "return [join \"[~a tag names @~a,~a]\" \" \"]" widget x y)))]
-  ;;  (format #t "~a\n" a)
-  ;;  (write a))
   (tk-eval (format #f "set ::scmVar(a) \"[~a tag names @~a,~a]\"" widget x y))
   (tk-get-var 'a)
-  (display (tk-get-var 'a))
+  (display (string-split (tk-get-var 'a) #\space))
   )
 (main-text 'tag 'bind "link" "<1>"
            `(,(lambda (widget x y)
