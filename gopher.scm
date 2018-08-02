@@ -1,7 +1,7 @@
 #!/usr/bin/env guile
 ;; Guile + PS/Tk Gopher client !#
 
-(use-modules (ice-9 rdelim))
+(use-modules (ice-9 rdelim) (srfi srfi-1))
 (load "pstk.scm")
 
 (define (get-ip-of address)
@@ -28,27 +28,44 @@
     (display (format #f "~a\r\n" selector) s) ; Ask for the selector
     (let loop [(lines '())]
       (let [(line (read-line s))]
-        (if (not (eof-object? line))
+        (if (not (or (eof-object? line) (string= line ".\r")))
             (loop (append lines (list line)))
             lines)))))
 
+(define links (make-hash-table))
+
+(define (nth n l)
+  (if (or (> n (length l)) (< n 0))
+    (error "Index out of bounds.")
+    (if (eq? n 0)
+      (car l)
+      (nth (- n 1) (cdr l)))))
+
 (define (gopher-render-line widget line)
   (let* [(kind (substring line 0 1))
-         (line (substring line 1))
+         (line (string-trim-right (substring line 1) #\return))
          (pieces (string-split line #\tab))
-         (tags '("default"))]
+         (description (list-ref pieces 0))
+         (selector (list-ref pieces 1))
+         (host (list-ref pieces 2))
+         (port (list-ref pieces 3))
+         (line-tags '("default"))]
     (cond
      [(equal? kind "1")
       (widget 'image 'create 'end 'image: "img-directory")
-      (set! tags '("link" "directory"))]
+      (set! line-tags '("link" "directory"))]
      [(equal? kind "0")
       (widget 'image 'create 'end 'image: "img-text")
-      (set! tags '("link" "text"))]
+      (set! line-tags '("link" "text"))]
      [else
-      (set! tags '("no-icon"))])
+      (set! line-tags '("no-icon"))])
+    (if (> (string-length selector) 0)
+        (let [(tag (format #f "LINK:~a:~a:~a" host port selector))]
+          (hashq-set! links tag '(host selector port))
+          (set! line-tags (append line-tags (list tag)))))
     (widget 'insert 'end
            (string-concatenate (list " " (list-ref pieces 0) "\n"))
-           tags)))
+           line-tags)))
 
 (define (gopher-render widget lines)
   (widget 'config 'state: 'normal)
@@ -97,10 +114,35 @@
            (lambda () (main-text 'config 'cursor: 'hand2)))
 (main-text 'tag 'bind "link" "<Leave>"
            (lambda () (main-text 'config 'cursor: "")))
+
+(tk-var 'tags)
+
+(define (tk-get-list name)
+  (string-split (tk-get-var name) #\space))
+
 (define (get-link widget x y)
-  (tk-eval (format #f "set ::scmVar(a) \"[~a tag names @~a,~a]\"" widget x y))
-  (tk-get-var 'a)
-  (display (string-split (tk-get-var 'a) #\space))
+  (tk-eval (format #f "set ::scmVar(tags) \"[~a tag names @~a,~a]\"" widget x y))
+  ;; Apparently the following line is required - otherwise `tk-get-var`,
+  ;; `tk-get-list` and the like don't work inside of `let` or `find`
+  (tk-get-var 'tags)
+  ;;(let [(tags (string-split (tk-get-var 'tags) #\space))]
+  (display
+   (find (lambda (i) (display i)(newline) (string-prefix? "LINK:" i))
+         (tk-get-list 'tags))
+   )(newline)
+  (when #f
+        (let [(tags (tk-get-list 'tags))]
+          (display "What the hell is wrong with you?\n")
+          (write tags)(newline)
+          (write (string-split (tk-get-var 'tags) #\space))(newline)
+          (write (tk-get-list 'tags))(newline)
+          (display (tk-get-var 'tags))(newline)
+          ;; Find a LINK: tag
+          (display
+           (find (lambda (i) (string-prefix? "LINK:" i))
+                 (tk-get-list 'tags))
+           )(newline)
+            ))
   )
 (main-text 'tag 'bind "link" "<1>"
            `(,(lambda (widget x y)
