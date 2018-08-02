@@ -72,6 +72,7 @@
 
 (define (gopher-render widget lines)
   (widget 'config 'state: 'normal)
+  (widget 'delete '1.0 'end)
   (for-each
    (lambda (line)
      (gopher-render-line widget line))
@@ -123,7 +124,6 @@
   ;; Apparently the following line is required - otherwise `tk-get-var`,
   ;; `tk-get-list` and the like don't work inside of `let` or `find`
   (tk-get-var 'tags)
-  ;;(write links)
   (gopher-render main-text (apply gopher-get
    (hash-ref links
               (find (lambda (i) (string-prefix? "LINK:" i))
