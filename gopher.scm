@@ -1,4 +1,4 @@
-#!/bin/sh
+#!/usr/bin/env guile
 ;; Guile + PS/Tk Gopher client !#
 
 (use-modules (ice-9 rdelim))
@@ -16,8 +16,8 @@
 ;; TODO: this should take an arbitrary font
 ;; TODO: the font should be defined elsewhere
 (define (ch-width)
-  (let [(f (tk-eval "font create f -family \"Ubuntu Mono\" -size 10"))
-        (w (string->number (tk-eval "font measure f 0")))]
+  (let [(f (tk-eval "font create f -family {Ubuntu Mono} -size 11"))
+        (w (string->number (tk-eval "font measure f {0}")))]
     (tk-eval "font delete f")
     w))
 
@@ -40,14 +40,14 @@
     (cond
      [(equal? kind "1")
       (widget 'image 'create 'end 'image: "img-directory")
-      (widget 'insert 'end " ")]
+      (set! tags '("link" "directory"))]
      [(equal? kind "0")
       (widget 'image 'create 'end 'image: "img-text")
-      (widget 'insert 'end " ")]
+      (set! tags '("link" "text"))]
      [else
       (set! tags '("no-icon"))])
     (widget 'insert 'end
-           (string-concatenate (list (list-ref pieces 0) "\n"))
+           (string-concatenate (list " " (list-ref pieces 0) "\n"))
            tags)))
 
 (define (gopher-render widget lines)
@@ -87,10 +87,34 @@
 ;; Define the main widget
 (define main-text
   (tk 'create-widget 'text 'border: 0 'relief: 'flat 'wrap: 'word
-      'state: 'disabled 'font: '("Ubuntu Mono" 10)))
-(main-text 'tag 'config "default" 'lmargin1: (ch-width))
-(main-text 'tag 'config "no-icon" 'lmargin1: (+ 16 (ch-width)))
+      'state: 'disabled 'font: '("Ubuntu Mono" 11)))
 (tk/pack main-text 'fill: 'both 'expand: 1)
+;; Define the main tags
+(main-text 'tag 'config "default" 'lmargin1: 0); (+ 1 (ch-width)))
+(main-text 'tag 'config "no-icon" 'lmargin1: 16)
+(main-text 'tag 'config "link" 'foreground: 'blue)
+(main-text 'tag 'bind "link" "<Enter>"
+           (lambda () (main-text 'config 'cursor: 'hand2)))
+(main-text 'tag 'bind "link" "<Leave>"
+           (lambda () (main-text 'config 'cursor: "")))
+(define (get-link widget x y)
+  ;;(display (format #f "Invoked get-link at ~a, ~a\n" x y))
+  ;; (write main-text)
+  ;;(format #t ".g6 tag names @~a,~a" x y)
+  ;;(display (tk-eval (format #f "exec notify-send \"Hey :: [~a tag names @~a,~a]\"" widget x y)))
+  ;;(display "\nThe previous was tk-eval'ed\n")
+  ;;(let [(a (main-text 'tag 'names (format #f "@~a,~a" x y)))]
+  ;;(let [(a (tk-eval (format #f "return [join \"[~a tag names @~a,~a]\" \" \"]" widget x y)))]
+  ;;  (format #t "~a\n" a)
+  ;;  (write a))
+  (tk-eval (format #f "set ::scmVar(a) \"[~a tag names @~a,~a]\"" widget x y))
+  (tk-get-var 'a)
+  (display (tk-get-var 'a))
+  )
+(main-text 'tag 'bind "link" "<1>"
+           `(,(lambda (widget x y)
+                (display (format #f "Clicked ~a, ~a\n" x y))
+                (get-link widget x y)) ,main-text %x %y))
 ;; Load the home page/address given on the command line
 ;; TODO: actually do it
 (gopher-render main-text (gopher-get "localhost" "/" 70))
