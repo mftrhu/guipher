@@ -4,6 +4,9 @@
 (use-modules (ice-9 rdelim) (srfi srfi-1) (web uri))
 (load "pstk.scm")
 
+(define (debug message . rest)
+  (apply format #t (string-concatenate (list "DEBUG: " message "\n")) rest))
+
 (define (get-ip-of address)
   "Returns the IP of ADDRESS in a form that can be used by (connect ... AF_INET)."
   (car (hostent:addr-list (gethost address))))
@@ -78,16 +81,28 @@
           (hash-set! links tag (list kind host selector port))
           (set! line-tags (append line-tags (list tag)))))
     (widget 'insert 'end
-           (string-concatenate (list " " (list-ref pieces 0) "\n"))
-           line-tags)))
+            (string-concatenate (list " " (list-ref pieces 0) "\n"))
+            line-tags)))
 
 (define (gopher-render-directory widget lines)
   (widget 'config 'state: 'normal)
   (widget 'delete '1.0 'end)
-  (for-each
-   (lambda (line)
-     (gopher-render-line widget line))
-   lines)
+  (catch #t
+    (lambda ()
+      (for-each
+       (lambda (line)
+         (gopher-render-line widget line))
+       lines))
+    (lambda (key . args)
+      (cond
+       [(eqv? key 'out-of-range)
+        (debug "An out-of range error happened, likely because the server returned a simple Page Not Found")
+        (debug "Retrying with `gopher-render-text'")
+        (gopher-render-text widget lines)]
+       [else
+        (write key)
+        (newline)])
+      ))
   (widget 'config 'state: 'disabled))
 
 (define (gopher-render-text widget lines)
@@ -100,7 +115,7 @@
   (widget 'config 'state: 'disabled))
 
 (define (gopher-jump-to-address)
-  (display (address-bar 'get))
+  (debug "Jumping to ~a" (address-bar 'get))
   ;; TODO: this should actually check for the presence of a protocol, use
   ;;   `gopher://` if none is present, and show an error or dispatch to
   ;;   `xdg-open` if anything else is found (http, ftp & co)
@@ -184,14 +199,14 @@
      [(equal? kind "0")
       (gopher-render-text main-text (apply gopher-get triplet))]
      [else
-      (display "Dunno lol\n")])
+      (debug "Gopher type ~a not handled" kind)])
     ;; Add element to browsing history
     (set! hist-back (cons quadruplet hist-back))
     ))
 
 (main-text 'tag 'bind "link" "<1>"
            `(,(lambda (widget x y)
-                (display (format #f "Clicked ~a, ~a\n" x y))
+                (debug "Clicked on ~a, ~a" x y)
                 (let [(link (gopher-link-at-point widget x y))]
                   (if link (begin
                                ;; Clear the forward history stack
