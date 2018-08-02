@@ -37,6 +37,20 @@
 
 ;; Hash table matching Tk tags to host:selector:port triplets
 (define links (make-hash-table))
+(define hist-back '())
+(define hist-forw '())
+
+(define (gopher-history-back)
+  (let [(current (car hist-back))
+        (previous (car (cdr hist-back)))]
+    (set! hist-back (cdr (cdr hist-back)))
+    (set! hist-forw (cons current hist-forw))
+    (gopher-goto previous)))
+
+(define (gopher-history-forward)
+  (let [(next (car hist-forw))]
+    (set! hist-forw (cdr hist-forw))
+    (gopher-goto next)))
 
 (define (gopher-render-line widget line)
   (let* [(kind (substring line 0 1))
@@ -116,9 +130,11 @@
 (define tool-bar
   (tk 'create-widget 'frame 'bd: 1 'relief: 'raised))
 (define btn-back
-  (tk 'create-widget 'button 'image: "img-back" 'relief: "flat"))
+  (tk 'create-widget 'button 'image: "img-back" 'relief: "flat"
+      'command: gopher-history-back))
 (define btn-forward
-  (tk 'create-widget 'button 'image: "img-forward" 'relief: "flat"))
+  (tk 'create-widget 'button 'image: "img-forward" 'relief: "flat"
+      'command: gopher-history-forward))
 (define address-bar
   (tk 'create-widget 'ttk::combobox))
 (tk/bind address-bar "<Return>" gopher-jump-to-address)
@@ -163,7 +179,10 @@
      [(equal? kind "0")
       (gopher-render-text main-text (apply gopher-get triplet))]
      [else
-      (display "Dunno lol\n")])))
+      (display "Dunno lol\n")])
+    ;; Add element to browsing history
+    (set! hist-back (cons quadruplet hist-back))
+    ))
 
 (main-text 'tag 'bind "link" "<1>"
            `(,(lambda (widget x y)
