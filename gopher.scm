@@ -213,6 +213,7 @@
 (tk/image 'create 'photo "img-back" 'file: "assets/arrow_left.png")
 (tk/image 'create 'photo "img-forward" 'file: "assets/arrow_right.png")
 (tk/image 'create 'photo "img-refresh" 'file: "assets/arrow_refresh.png")
+(tk/image 'create 'photo "img-history" 'file: "assets/time.png")
 (tk/image 'create 'photo "img-directory" 'file: "assets/folder.png")
 (tk/image 'create 'photo "img-text" 'file: "assets/page.png")
 ;; Dummy widget to receive focus
@@ -223,22 +224,23 @@
 (define btn-back
   (tk 'create-widget 'button 'image: "img-back" 'relief: "flat"
       'command: gopher-history-back))
+(define btn-forward
+  (tk 'create-widget 'button 'image: "img-forward" 'relief: "flat"
+      'command: gopher-history-forward))
 (define btn-refresh
   (tk 'create-widget 'button 'image: "img-refresh" 'relief: "flat"
       'command: (lambda ()
                   (let [(current (car hist-back))]
                     (set! hist-back (cdr hist-back))
-                    (dispatch-by-uri current)
-                    ;;(gopher-goto current)
-                    ))))
-(define btn-forward
-  (tk 'create-widget 'button 'image: "img-forward" 'relief: "flat"
-      'command: gopher-history-forward))
+                    (dispatch-by-uri current)))))
+(define btn-history
+  (tk 'create-widget 'button 'image: "img-history" 'relief: "flat"
+      'command: (lambda () (dispatch-by-uri "about:history"))))
 (define address-bar
   (tk 'create-widget 'ttk::combobox))
 (tk/bind address-bar "<Return>" gopher-jump-to-address)
 ;;; Pack
-(tk/pack btn-back btn-refresh btn-forward 'side: 'left 'in: tool-bar)
+(tk/pack btn-back btn-forward btn-refresh btn-history 'side: 'left 'in: tool-bar)
 (tk/pack address-bar 'side: 'left 'expand: 1 'fill: 'x 'in: tool-bar)
 (tk/pack tool-bar 'fill: 'x)
 ;; Define the main widget
