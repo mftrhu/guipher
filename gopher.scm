@@ -7,11 +7,13 @@
 (declare-default-port! "gopher" 70)
 (define default-protocol "gopher://")
 
-(define (gopher-handler uri)
+(define (gopher-handler string uri)
   (debug "Gopher jump-to ~a" (uri-to-quadruplet uri))
-  (gopher-goto (uri-to-quadruplet uri)))
+  (gopher-goto (uri-to-quadruplet uri))
+  ;; Add element to browsing history
+  (set! hist-back (cons string hist-back)))
 
-(define (about-handler uri)
+(define (about-handler string uri)
   (debug "About jump-to ~a" (uri-path uri))
   (cond
    [(equal? (uri-path uri) "blank")
@@ -25,10 +27,11 @@
    (cons 'gopher gopher-handler)
    (cons 'about about-handler)))
 
-(define (default-handler uri)
+(define (default-handler string uri)
   (debug "Unknown protocol ~a\n" (uri-scheme uri)))
 
 (define (dispatch-by-uri string)
+  (debug "dispatch-by-uri invoked w. ~a" string)
   (let [(parsed (string->uri string))]
     (if (not parsed)
         ;; Not parsed, likely missing the protocol - add it and try
@@ -39,7 +42,7 @@
         ;; Handle the URI with the proper function
         (let [(handler (assoc (uri-scheme parsed) protocol-handlers))]
           (if handler
-              ((cdr handler) parsed)
+              ((cdr handler) string parsed)
               (default-handler parsed))))))
 
 (define (uri-to-quadruplet uri)
@@ -106,20 +109,24 @@
     ("I" . ("image" "img-image" gopher-render-image))
     ("9" . ("binary" "img-binary" gopher-download))))
 
-
 (define (gopher-history-back)
+  (write hist-back)(newline)
   (if (>= (length hist-back) 2)
       (let [(current (car hist-back))
             (previous (car (cdr hist-back)))]
         (set! hist-back (cdr (cdr hist-back)))
         (set! hist-forw (cons current hist-forw))
-        (gopher-goto previous))))
+        (dispatch-by-uri previous)
+        ;;(gopher-goto previous)
+        )))
 
 (define (gopher-history-forward)
   (if (>= (length hist-forw) 1)
       (let [(next (car hist-forw))]
         (set! hist-forw (cdr hist-forw))
-        (gopher-goto next))))
+        (dispatch-by-uri next)
+        ;;(gopher-goto next)
+        )))
 
 (define (gopher-render-line widget line)
   (let* [(kind (substring line 0 1))
@@ -141,7 +148,10 @@
       (set! line-tags '("no-icon"))])
     (if (> (string-length selector) 0)
         (let [(tag (format #f "LINK:~a:~a:~a" host port selector))]
-          (hash-set! links tag (list kind host port selector))
+          (hash-set! links tag
+                     (format #f "gopher://~a:~a/~a/~a" host port kind selector)
+                                        ;(list kind host port selector)
+                     )
           (set! line-tags (append line-tags (list tag)))))
     (widget 'insert 'end
             (string-concatenate (list " " (list-ref pieces 0) "\n"))
@@ -177,27 +187,6 @@
    lines)
   (widget 'config 'state: 'disabled))
 
-(define (--gopher-jump-to-address)
-  (debug "Jumping to ~a" (address-bar 'get))
-  ;; TODO: this should actually check for the presence of a protocol, use
-  ;;   `gopher://` if none is present, and show an error or dispatch to
-  ;;   `xdg-open` if anything else is found (http, ftp & co)
-  ;; TODO: this should also try to parse out the selector from the URL
-  ;;   instead of assuming that everything is a directory
-  (let* [(bar (address-bar 'get))
-         ;; `string->uri` requires the string to contain a protocol - check
-         ;;   if the address bar contents start with `gopher://` and prepend
-         ;;   it if needed
-         (uri (string->uri
-               (if (string-prefix? "gopher://" bar)
-                   bar
-                   (string-concatenate (list "gopher://" bar)))))
-         (host (uri-host uri))
-         (port (or (uri-port uri) 70))
-         (selector (uri-path uri))]
-    (gopher-goto (list "1" host selector port)))
-  (tk/focus main-text))
-
 (define (gopher-jump-to-address)
   (debug "Trying to jump to ~a" (address-bar 'get))
   (let [(address (address-bar 'get))]
@@ -227,7 +216,9 @@
       'command: (lambda ()
                   (let [(current (car hist-back))]
                     (set! hist-back (cdr hist-back))
-                    (gopher-goto current)))))
+                    (dispatch-by-uri current)
+                    ;;(gopher-goto current)
+                    ))))
 (define btn-forward
   (tk 'create-widget 'button 'image: "img-forward" 'relief: "flat"
       'command: gopher-history-forward))
@@ -278,8 +269,6 @@
       (gopher-render-text main-text (apply gopher-get triplet))]
      [else
       (debug "Gopher type ~a not handled" kind)])
-    ;; Add element to browsing history
-    (set! hist-back (cons quadruplet hist-back))
     ))
 
 (main-text 'tag 'bind "link" "<1>"
@@ -289,11 +278,12 @@
                   (if link (begin
                                ;; Clear the forward history stack
                                (set! hist-forw '())
-                               (gopher-goto link)))))
+                                        ;(gopher-goto link)
+                               (dispatch-by-uri link)
+                               ))))
              ,main-text %x %y))
 ;; Load the home page/address given on the command line
 ;; TODO: actually do it
-;;(gopher-goto '("1" "localhost" 70 "/"))
 (dispatch-by-uri "gopher://localhost/")
 ;; Start Tk
 (tk-event-loop)
