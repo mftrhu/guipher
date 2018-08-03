@@ -20,6 +20,14 @@
     (debug "YOYOYOYOYO")
     (main-text 'config 'state: 'normal)
     (main-text 'delete '1.0 'end)
+    (main-text 'config 'state: 'disabled)]
+   [(equal? (uri-path uri) "history")
+    (main-text 'config 'state: 'normal)
+    (main-text 'delete '1.0 'end)
+    (for-each
+     (lambda (line)
+       (main-text 'insert 'end (string-append line "\n")))
+     hist-back)
     (main-text 'config 'state: 'disabled)]))
 
 (define protocol-handlers
@@ -278,12 +286,12 @@
                   (if link (begin
                                ;; Clear the forward history stack
                                (set! hist-forw '())
-                                        ;(gopher-goto link)
                                (dispatch-by-uri link)
                                ))))
              ,main-text %x %y))
 ;; Load the home page/address given on the command line
-;; TODO: actually do it
-(dispatch-by-uri "gopher://localhost/")
+(if (>= (length (command-line)) 2)
+     (dispatch-by-uri (car (cdr (command-line))))
+     (dispatch-by-uri "gopher://localhost/"))
 ;; Start Tk
 (tk-event-loop)
