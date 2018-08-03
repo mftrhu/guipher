@@ -66,6 +66,15 @@
         ;; There is not - assume we are dealing with a menu
         (list "1" host port path))))
 
+(define (quadruplet-to-uri quadruplet)
+  (let* [(host (list-ref quadruplet 1))
+         (port (list-ref quadruplet 2))
+         (path (list-ref quadruplet 3))
+         (kind (if (string-prefix? "/" path)
+                   (car quadruplet)
+                   (string-append (car quadruplet) "/")))]
+    (string-append "gopher://" host ":" (number->string port) "/" kind path)))
+
 ;;====================================================================;;
 
 (define (debug message . rest)
@@ -103,8 +112,6 @@
             (loop (append lines (list line)))
             lines)))))
 
-;; Hash table matching Tk tags to host:selector:port triplets
-(define links (make-hash-table))
 ;; Stacks for the history
 (define hist-back '())
 (define hist-forw '())
@@ -155,11 +162,8 @@
      [else
       (set! line-tags '("no-icon"))])
     (if (> (string-length selector) 0)
-        (let [(tag (format #f "LINK:~a:~a:~a" host port selector))]
-          (hash-set! links tag
-                     (format #f "gopher://~a:~a/~a/~a" host port kind selector)
-                                        ;(list kind host port selector)
-                     )
+        (let* [(uri (quadruplet-to-uri (list kind host port selector)))
+               (tag (string-append "LINK:" uri))]
           (set! line-tags (append line-tags (list tag)))))
     (widget 'insert 'end
             (string-concatenate (list " " (list-ref pieces 0) "\n"))
@@ -258,21 +262,16 @@
   ;; HACK: Apparently the following line is required - otherwise `tk-get-var`,
   ;;   `tk-get-list` and the like don't work inside of `let` or `find`
   (tk-get-var 'tags)
-  (hash-ref links
-            (find (lambda (i) (string-prefix? "LINK:" i))
-                  (tk-get-list 'tags))))
+  (substring (find (lambda (i) (string-prefix? "LINK:" i))
+                   (tk-get-list 'tags)) 5))
   
 (define (gopher-goto quadruplet)
+  (address-bar 'set (quadruplet-to-uri quadruplet))
   (let [(kind (car quadruplet))
         (triplet (cdr quadruplet))]
     (cond
      [(equal? kind "1")
-      (gopher-render-directory main-text (apply gopher-get triplet))
-      (address-bar 'set (format #f "gopher://~a:~a/~a~a"
-                                (list-ref triplet 0)
-                                (list-ref triplet 1)
-                                kind
-                                (list-ref triplet 2)))]
+      (gopher-render-directory main-text (apply gopher-get triplet))]
      [(equal? kind "0")
       (gopher-render-text main-text (apply gopher-get triplet))]
      [else
