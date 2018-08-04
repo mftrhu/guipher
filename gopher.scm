@@ -1,7 +1,7 @@
 #!/usr/bin/env guile
 ;; Guile + PS/Tk Gopher client !#
 
-(use-modules (ice-9 rdelim) (ice-9 regex) (srfi srfi-1) (web uri))
+(use-modules (ice-9 rdelim) (ice-9 regex) (srfi srfi-1) (web uri) (rnrs io ports))
 (load "pstk.scm")
 
 (declare-default-port! "gopher" 70)
@@ -17,18 +17,16 @@
   (debug "About jump-to ~a" (uri-path uri))
   (cond
    [(equal? (uri-path uri) "blank")
-    (debug "YOYOYOYOYO")
-    (main-text 'config 'state: 'normal)
-    (main-text 'delete '1.0 'end)
-    (main-text 'config 'state: 'disabled)]
+    (ui-render main-text (lambda (widget) #f))]
    [(equal? (uri-path uri) "history")
-    (main-text 'config 'state: 'normal)
-    (main-text 'delete '1.0 'end)
-    (for-each
-     (lambda (line)
-       (main-text 'insert 'end (string-append line "\n")))
-     hist-back)
-    (main-text 'config 'state: 'disabled)]))
+    (ui-render main-text
+               (lambda (widget items)
+                 (for-each
+                  (lambda (item)
+                    (main-text 'insert 'end (string-append item "\n")
+                               (list "link" (string-append "LINK:" item))))
+                  items))
+               hist-back)]))
 
 (define protocol-handlers
   (list
@@ -100,9 +98,9 @@
 (define (tk-get-list name)
   (string-split (tk-get-var name) #\space))
 
-(define (gopher-get address port selector)
+(define (gopher-get-lines address port selector)
   "Returns a list of lines containing the server's response to a Gopher request at ADDRESS:PORT for SELECTOR."
-  (debug "gopher-get recived (~a ~a ~a)" address port selector)
+  (debug "gopher-get-lines called with (~a ~a ~a)" address port selector)
   (let [(s (socket PF_INET SOCK_STREAM 0))]
     (connect s AF_INET (get-ip-of address) port)
     (display (format #f "~a\r\n" selector) s) ; Ask for the selector
@@ -112,17 +110,25 @@
             (loop (append lines (list line)))
             lines)))))
 
+(define (gopher-get-raw address port selector)
+  (debug "gopher-get-raw called with (~a ~a ~a)" address port selector)
+  (let [(s (socket PF_INET SOCK_STREAM 0))]
+    (connect s AF_INET (get-ip-of address) port)
+    (display (format #f "~a\r\n" selector) s) ; Ask for the selector
+    ;; HACK: this is globbing all of the response, true, but it's putting
+    ;;   it inside a string - it probably won't work with binary files
+    (get-string-all s)))
+
 ;; Stacks for the history
 (define hist-back '())
 (define hist-forw '())
-;; Item type -> tag - icon - handler map
+;; Item type -> tag - icon - raw? - handler map
 (define gopher-types
-  '(("0" . ("text" "img-text" gopher-render-text))
-    ("1" . ("directory" "img-directory" gopher-render-menu))
-    ("7" . ("search" "img-search" gopher-render-menu))
-    ("g" . ("image" "img-image" gopher-render-image))
-    ("I" . ("image" "img-image" gopher-render-image))
-    ("9" . ("binary" "img-binary" gopher-download))))
+  (list
+   (cons "0" (list "text" "img-text" #f (delay ui-render-text)))
+   (cons "1" (list "menu" "img-directory" #f (delay ui-render-menu)))
+   (cons "I" (list "image" #f #t (delay ui-render-image)))
+   (cons "h" (list "html" "img-web" #f #f))))
 
 (define (gopher-history-back)
   (write hist-back)(newline)
@@ -131,72 +137,62 @@
             (previous (car (cdr hist-back)))]
         (set! hist-back (cdr (cdr hist-back)))
         (set! hist-forw (cons current hist-forw))
-        (dispatch-by-uri previous)
-        ;;(gopher-goto previous)
-        )))
+        (dispatch-by-uri previous))))
 
 (define (gopher-history-forward)
   (if (>= (length hist-forw) 1)
       (let [(next (car hist-forw))]
         (set! hist-forw (cdr hist-forw))
-        (dispatch-by-uri next)
-        ;;(gopher-goto next)
-        )))
+        (dispatch-by-uri next))))
 
-(define (gopher-render-line widget line)
+(define (ui-render-menu-line widget line)
   (let* [(kind (substring line 0 1))
          (line (string-trim-right (substring line 1) #\return))
          (pieces (string-split line #\tab))
          (description (list-ref pieces 0))
-         (selector (list-ref pieces 1))
-         (host (list-ref pieces 2))
-         (port (string->number (list-ref pieces 3)))
-         (line-tags '("default"))]
-    (cond
-     [(equal? kind "1")
-      (widget 'image 'create 'end 'image: "img-directory")
-      (set! line-tags '("link" "directory"))]
-     [(equal? kind "0")
-      (widget 'image 'create 'end 'image: "img-text")
-      (set! line-tags '("link" "text"))]
-     [else
-      (set! line-tags '("no-icon"))])
-    (if (> (string-length selector) 0)
-        (let* [(uri (quadruplet-to-uri (list kind host port selector)))
-               (tag (string-append "LINK:" uri))]
-          (set! line-tags (append line-tags (list tag)))))
-    (widget 'insert 'end
-            (string-concatenate (list " " (list-ref pieces 0) "\n"))
-            line-tags)))
+         (line-tags '("no-icon" "default"))]
+    (if (equal? kind "i")
+        (widget 'insert 'end (string-append " " description "\n") line-tags)
+        ;; TODO: handle malformed lines (should raise 'out-of-range)
+        (let* [(selector (list-ref pieces 1))
+               (host (list-ref pieces 2))
+               (port (string->number (list-ref pieces 3)))
+               (uri (quadruplet-to-uri (list kind host port selector)))
+               (line-tags (cons "link"
+                                (cons (string-append "LINK:" uri) line-tags)))
+               (type-data (assoc kind gopher-types))]
+          (if (and type-data (list-ref (cdr type-data) 1))
+              (widget 'image 'create 'end 'image: (list-ref (cdr type-data) 1)))
+          (widget 'insert 'end (string-append " " description "\n") line-tags)))))
 
-(define (gopher-render-directory widget lines)
-  (widget 'config 'state: 'normal)
-  (widget 'delete '1.0 'end)
-  (catch #t
-    (lambda ()
-      (for-each
-       (lambda (line)
-         (gopher-render-line widget line))
-       lines))
-    (lambda (key . args)
-      (cond
-       [(eqv? key 'out-of-range)
-        (debug "An out-of range error happened, likely because the server returned a simple Page Not Found")
-        (debug "Retrying with `gopher-render-text'")
-        (gopher-render-text widget lines)]
-       [else
-        (write key)
-        (newline)])
-      ))
-  (widget 'config 'state: 'disabled))
+(define (ui-render-image widget data)
+  ;; HACK: I'm creating a temporary file *and* a temporary Tk image here
+  ;;   There should be a way to render a chunk of image data without
+  ;;   having to do any of this, but a straight-up `create -data data`
+  ;;   doesn't work, and it doesn't seem to return a value I can use
+  ;;   for the text widget `-image`
+  (let [(port (mkstemp! (string-copy "/tmp/guipher-img-XXXXXX")))]
+    (display data port)
+    (flush-output-port port)
+    (let [(img (tk/image 'create 'photo "img-tmp" 'file: (port-filename port)))]
+      (widget 'image 'create 'end 'image: "img-tmp"))))
 
-(define (gopher-render-text widget lines)
-  (widget 'config 'state: 'normal)
-  (widget 'delete '1.0 'end)
+(define (ui-render-text widget lines)
   (for-each
    (lambda (line)
      (widget 'insert 'end (string-concatenate (list line "\n"))))
-   lines)
+   lines))
+
+(define (ui-render-menu widget lines)
+  (for-each
+   (lambda (line)
+     (ui-render-menu-line widget line))
+   lines))
+
+(define (ui-render widget function . rest)
+  (widget 'config 'state: 'normal)
+  (widget 'delete '1.0 'end)
+  (apply function widget rest)
   (widget 'config 'state: 'disabled))
 
 (define (gopher-jump-to-address)
@@ -216,6 +212,7 @@
 (tk/image 'create 'photo "img-history" 'file: "assets/time.png")
 (tk/image 'create 'photo "img-directory" 'file: "assets/folder.png")
 (tk/image 'create 'photo "img-text" 'file: "assets/page.png")
+(tk/image 'create 'photo "img-web" 'file: "assets/world_link.png")
 ;; Dummy widget to receive focus
 (define dummy (tk 'create-widget 'frame))
 ;; Define the tool bar
@@ -266,19 +263,23 @@
   (tk-get-var 'tags)
   (substring (find (lambda (i) (string-prefix? "LINK:" i))
                    (tk-get-list 'tags)) 5))
-  
+
 (define (gopher-goto quadruplet)
   (address-bar 'set (quadruplet-to-uri quadruplet))
-  (let [(kind (car quadruplet))
-        (triplet (cdr quadruplet))]
+  (let* [(kind (car quadruplet))
+         (triplet (cdr quadruplet))
+         (type-data (assoc kind gopher-types))]
     (cond
-     [(equal? kind "1")
-      (gopher-render-directory main-text (apply gopher-get triplet))]
-     [(equal? kind "0")
-      (gopher-render-text main-text (apply gopher-get triplet))]
+     [(equal? kind "h")
+      (gopher-history-back)]
      [else
-      (debug "Gopher type ~a not handled" kind)])
-    ))
+      (if (and type-data (car (reverse type-data)))
+          (ui-render main-text (force (car (reverse type-data)))
+                     (apply (if (list-ref type-data 3)
+                                gopher-get-raw
+                                gopher-get-lines)
+                            triplet))
+          (debug "Gopher type ~a not handled" kind))])))
 
 (main-text 'tag 'bind "link" "<1>"
            `(,(lambda (widget x y)
