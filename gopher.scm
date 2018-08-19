@@ -1,4 +1,4 @@
-#!/usr/bin/env guile
+#!/usr/bin/guile -s
 ;; Guile + PS/Tk Gopher client !#
 
 (use-modules (ice-9 rdelim) (ice-9 regex) (srfi srfi-1) (web uri)
@@ -234,6 +234,16 @@
          (widget 'insert 'end (string-append  line "\n")))))
    lines))
 
+(define (ui-render-not-found widget triplet)
+  (ui-render
+   main-text
+   (lambda (widget)
+     (widget 'insert 'end "Server not found\n" '("title"))
+     (widget 'insert 'end
+             (format #f "Guipher can't find the server at ~a.\n\n" (car triplet)))
+     (widget 'insert 'end
+             "Check the address for typing errors, and make sure that your network connection is on and working before reloading.\n"))))
+
 (define (ui-render widget function . rest)
   (widget 'config 'state: 'normal)
   (widget 'delete '1.0 'end)
@@ -303,7 +313,8 @@
 ;;; Pack
 (tk/pack main-text 'fill: 'both 'expand: 1)
 ;; Define the main tags
-(main-text 'tag 'config "default" 'lmargin1: 0); (+ 1 (ch-width)))
+(main-text 'tag 'config "title" 'font: '("Ubuntu Mono" 16 "bold"))
+(main-text 'tag 'config "default" 'lmargin1: 0)
 (main-text 'tag 'config "no-icon" 'lmargin1: 16)
 (main-text 'tag 'config "link" 'foreground: 'blue)
 (main-text 'tag 'bind "link" "<Enter>"
@@ -316,9 +327,14 @@
   (let* [(kind (car quadruplet))
          (triplet (cdr quadruplet))
          (type-data (assoc kind gopher-types))]
-    (if (and type-data (car (reverse type-data)))
-        ((car (reverse type-data)) main-text triplet)
-        (default-type-handler main-text triplet))))
+    (catch 'try-again
+      (lambda ()
+        (if (and type-data (car (reverse type-data)))
+            ((car (reverse type-data)) main-text triplet)
+            (default-type-handler main-text triplet)))
+      ;; Handle network errors
+      (lambda (key . args)
+        (ui-render-not-found main-text triplet)))))
 
 (main-text 'tag 'bind "link" "<1>"
            `(,(lambda (widget x y)
