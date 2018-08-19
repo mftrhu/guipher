@@ -1,7 +1,8 @@
 #!/usr/bin/env guile
 ;; Guile + PS/Tk Gopher client !#
 
-(use-modules (ice-9 rdelim) (ice-9 regex) (srfi srfi-1) (web uri) (rnrs io ports))
+(use-modules (ice-9 rdelim) (ice-9 regex) (srfi srfi-1) (web uri)
+             (rnrs io ports))
 (load "pstk.scm")
 
 (declare-default-port! "gopher" 70)
@@ -58,7 +59,7 @@
     ;; Check to see if there is a possible selector in the path
     (if (string-match "/[0-9a-zA-Z]/" path)
         ;; There is - extract and remove it from the path
-        (let [(path (substring path 3))
+        (let [(path (substring path 2))
               (selector (substring path 1 2))]
           (list selector host port path))
         ;; There is not - assume we are dealing with a menu
@@ -89,7 +90,7 @@
 
 ;; TODO: this should take an arbitrary font
 ;; TODO: the font should be defined elsewhere
-(define (ch-width)
+(define (tk-ch-width)
   (let [(f (tk-eval "font create f -family {Ubuntu Mono} -size 11"))
         (w (string->number (tk-eval "font measure f {0}")))]
     (tk-eval "font delete f")
@@ -123,12 +124,52 @@
 (define hist-back '())
 (define hist-forw '())
 ;; Item type -> tag - icon - raw? - handler map
+(define gopher-type-image
+  (list "image" "img-image"
+        (lambda (widget triplet)
+          (ui-render widget ui-render-image
+                     (apply gopher-get-raw triplet)))))
 (define gopher-types
   (list
-   (cons "0" (list "text" "img-text" #f (delay ui-render-text)))
-   (cons "1" (list "menu" "img-directory" #f (delay ui-render-menu)))
-   (cons "I" (list "image" #f #t (delay ui-render-image)))
-   (cons "h" (list "html" "img-web" #f #f))))
+   (cons "0" (list "text" "img-text"
+                   (lambda (widget triplet)
+                     (ui-render widget ui-render-text
+                                (apply gopher-get-lines triplet)))))
+   (cons "1" (list "menu" "img-directory"
+                   (lambda (widget triplet)
+                     (ui-render widget ui-render-menu
+                                (apply gopher-get-lines triplet)))))
+   (cons "I" gopher-type-image)
+   (cons "g" gopher-type-image)
+   (cons "h" (list "html" "img-web"
+                   (lambda (widget triplet)
+                     (let [(target (list-ref triplet 2))]
+                       (if (string-prefix? "URL" target)
+                           (system* "xdg-open" (substring target 4))
+                           (ui-render widget ui-render-text
+                                      (apply gopher-get-lines triplet)))))))
+   (cons "9" (list "binary" "img-box"
+                   (lambda (widget triplet)
+                     (default-type-handler widget triplet))))))
+
+(define (default-type-handler widget triplet)
+  (debug ":: ~a" (save-file))
+  (debug "default-type-handler called on ~a" triplet)
+  (when #f
+    (let [(filename (tk/get-save-file
+                     'initialfile: (car (reverse triplet))
+                     'filetypes: '(("All files" "*")))
+                    )
+          ;;(filename (eval-wish (format #f "tk_getSaveFile -initialfile ~a"
+          ;;                             (car (reverse triplet)))))
+          ]
+      (tk-get-var 'tags)
+      (debug "Filename: ~a :: ~a" filename (car (reverse triplet)))
+      (debug "Pulling data from ~a" triplet)
+      (apply gopher-get-raw triplet))
+    (tk-eval "set ::scmVar(filename) [tk_getSaveFile]")
+    (tk-get-var 'filename)
+    (debug "Hello ~a" (tk-get-var 'filename))))
 
 (define (gopher-history-back)
   (write hist-back)(newline)
@@ -144,26 +185,6 @@
       (let [(next (car hist-forw))]
         (set! hist-forw (cdr hist-forw))
         (dispatch-by-uri next))))
-
-(define (ui-render-menu-line widget line)
-  (let* [(kind (substring line 0 1))
-         (line (string-trim-right (substring line 1) #\return))
-         (pieces (string-split line #\tab))
-         (description (list-ref pieces 0))
-         (line-tags '("no-icon" "default"))]
-    (if (equal? kind "i")
-        (widget 'insert 'end (string-append " " description "\n") line-tags)
-        ;; TODO: handle malformed lines (should raise 'out-of-range)
-        (let* [(selector (list-ref pieces 1))
-               (host (list-ref pieces 2))
-               (port (string->number (list-ref pieces 3)))
-               (uri (quadruplet-to-uri (list kind host port selector)))
-               (line-tags (cons "link"
-                                (cons (string-append "LINK:" uri) line-tags)))
-               (type-data (assoc kind gopher-types))]
-          (if (and type-data (list-ref (cdr type-data) 1))
-              (widget 'image 'create 'end 'image: (list-ref (cdr type-data) 1)))
-          (widget 'insert 'end (string-append " " description "\n") line-tags)))))
 
 (define (ui-render-image widget data)
   ;; HACK: I'm creating a temporary file *and* a temporary Tk image here
@@ -183,10 +204,34 @@
      (widget 'insert 'end (string-concatenate (list line "\n"))))
    lines))
 
+(define (ui-render-menu-line widget line)
+  (let* [(kind (substring line 0 1))
+         (line (string-trim-right (substring line 1) #\return))
+         (pieces (string-split line #\tab))
+         (description (list-ref pieces 0))
+         (line-tags '("no-icon" "default"))]
+    (if (equal? kind "i")
+        (widget 'insert 'end (string-append " " description "\n") line-tags)
+        (let* [(selector (list-ref pieces 1))
+               (host (list-ref pieces 2))
+               (port (string->number (list-ref pieces 3)))
+               (uri (quadruplet-to-uri (list kind host port selector)))
+               (line-tags (cons "link"
+                                (cons (string-append "LINK:" uri) line-tags)))
+               (type-data (assoc kind gopher-types))]
+          (if (and type-data (list-ref (cdr type-data) 1))
+              (widget 'image 'create 'end 'image: (list-ref (cdr type-data) 1)))
+          (widget 'insert 'end (string-append " " description "\n") line-tags)))))
+
 (define (ui-render-menu widget lines)
   (for-each
    (lambda (line)
-     (ui-render-menu-line widget line))
+     (catch 'out-of-range
+       (lambda ()
+         (ui-render-menu-line widget line))
+       ;; Handle malformed menu lines by rendering them raw
+       (lambda (key . args)
+         (widget 'insert 'end (string-append  line "\n")))))
    lines))
 
 (define (ui-render widget function . rest)
@@ -195,11 +240,20 @@
   (apply function widget rest)
   (widget 'config 'state: 'disabled))
 
-(define (gopher-jump-to-address)
+(define (ui-jump-to-address)
   (debug "Trying to jump to ~a" (address-bar 'get))
   (let [(address (address-bar 'get))]
     (dispatch-by-uri address))
   (tk/focus dummy))
+
+(define (ui-link-at-point widget x y)
+  "Given a Tk text WIDGET and a pair of X, Y coordinates, returns a quadruplet of kind, host, selector and port if a link exists at that point, or `#f` if it doesn't."
+  (tk-eval (format #f "set ::scmVar(tags) \"[~a tag names @~a,~a]\"" widget x y))
+  ;; HACK: Apparently the following line is required - otherwise `tk-get-var`,
+  ;;   `tk-get-list` and the like don't work inside of `let` or `find`
+  (tk-get-var 'tags)
+  (substring (find (lambda (i) (string-prefix? "LINK:" i))
+                   (tk-get-list 'tags)) 5))
 
 (tk-start)
 ;; Initial window settings
@@ -213,6 +267,8 @@
 (tk/image 'create 'photo "img-directory" 'file: "assets/folder.png")
 (tk/image 'create 'photo "img-text" 'file: "assets/page.png")
 (tk/image 'create 'photo "img-web" 'file: "assets/world_link.png")
+(tk/image 'create 'photo "img-image" 'file: "assets/image.png")
+(tk/image 'create 'photo "img-box" 'file: "assets/box.png")
 ;; Dummy widget to receive focus
 (define dummy (tk 'create-widget 'frame))
 ;; Define the tool bar
@@ -235,7 +291,7 @@
       'command: (lambda () (dispatch-by-uri "about:history"))))
 (define address-bar
   (tk 'create-widget 'ttk::combobox))
-(tk/bind address-bar "<Return>" gopher-jump-to-address)
+(tk/bind address-bar "<Return>" ui-jump-to-address)
 ;;; Pack
 (tk/pack btn-back btn-forward btn-refresh btn-history 'side: 'left 'in: tool-bar)
 (tk/pack address-bar 'side: 'left 'expand: 1 'fill: 'x 'in: tool-bar)
@@ -255,36 +311,19 @@
 (main-text 'tag 'bind "link" "<Leave>"
            (lambda () (main-text 'config 'cursor: "")))
 
-(define (gopher-link-at-point widget x y)
-  "Given a Tk text WIDGET and a pair of X, Y coordinates, returns a quadruplet of kind, host, selector and port if a link exists at that point, or `#f` if it doesn't."
-  (tk-eval (format #f "set ::scmVar(tags) \"[~a tag names @~a,~a]\"" widget x y))
-  ;; HACK: Apparently the following line is required - otherwise `tk-get-var`,
-  ;;   `tk-get-list` and the like don't work inside of `let` or `find`
-  (tk-get-var 'tags)
-  (substring (find (lambda (i) (string-prefix? "LINK:" i))
-                   (tk-get-list 'tags)) 5))
-
 (define (gopher-goto quadruplet)
   (address-bar 'set (quadruplet-to-uri quadruplet))
   (let* [(kind (car quadruplet))
          (triplet (cdr quadruplet))
          (type-data (assoc kind gopher-types))]
-    (cond
-     [(equal? kind "h")
-      (gopher-history-back)]
-     [else
-      (if (and type-data (car (reverse type-data)))
-          (ui-render main-text (force (car (reverse type-data)))
-                     (apply (if (list-ref type-data 3)
-                                gopher-get-raw
-                                gopher-get-lines)
-                            triplet))
-          (debug "Gopher type ~a not handled" kind))])))
+    (if (and type-data (car (reverse type-data)))
+        ((car (reverse type-data)) main-text triplet)
+        (default-type-handler main-text triplet))))
 
 (main-text 'tag 'bind "link" "<1>"
            `(,(lambda (widget x y)
                 (debug "Clicked on ~a, ~a" x y)
-                (let [(link (gopher-link-at-point widget x y))]
+                (let [(link (ui-link-at-point widget x y))]
                   (if link (begin
                                ;; Clear the forward history stack
                                (set! hist-forw '())
@@ -292,6 +331,10 @@
                                ))))
              ,main-text %x %y))
 ;; Load the home page/address given on the command line
+;;(display (tk/get-save-file))
+(define (save-file)
+  (tk-read-wish)
+  (tk-eval "tk_getSaveFile"))
 (if (>= (length (command-line)) 2)
      (dispatch-by-uri (car (cdr (command-line))))
      (dispatch-by-uri "gopher://localhost/"))
