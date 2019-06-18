@@ -12,3 +12,7 @@ I originally developed it using [RCS][RCS] for version control, but then importe
 
 [RCS]: https://www.gnu.org/software/rcs/
 [rcs-fast-export]: http://git.oblomov.eu/rcs-fast-export
+
+The icons in the `assets/` folder come from the [Silk icon set][silk], by [Mark James](http://www.famfamfam.com/) and are used under the terms of the [CC-BY-3.0](https://creativecommons.org/licenses/by/3.0/) license.
+
+[silk]: http://www.famfamfam.com/lab/icons/silk/
