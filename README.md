@@ -2,6 +2,8 @@
 
 > A Gopher client written in Guile scheme and using Tk for its GUI
 
+![guipher screenshot](img/guipher_screenshot.png)
+
 guipher is still very much buggy - the [PS/Tk][PSTK] library has some issues, especially where it comes to dialogs - producing copious debug output, while being unable to be controlled via the keyboard, but it is somewhat functional.
 
 Or, at the very least, it can be pointed at a well-formed gopher directory without it immediately having a meltdown.  A good browsing experience is not guaranteed - at the very least, it doesn't have any kind of cache - and it might just decide to crash later.
